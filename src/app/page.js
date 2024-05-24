@@ -1,113 +1,106 @@
-import Image from 'next/image'
+// pages/index.js
+'use client'
 
-export default function Home() {
+import { useState, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
+import PlayerControls from './components/PlayerControls';
+
+const DynamicMap = dynamic(() => import('./components/Map'), { ssr: false });
+
+const HomePage = () => {
+  const [coordinates, setCoordinates] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [currentTimestamp, setCurrentTimestamp] = useState(null);
+  const intervalRef = useRef(null);
+  const workerRef = useRef(null);
+
+  useEffect(() => {
+    const data = [
+      { lat: 37.7749, lng: -122.4194, timestamp: 1622548800000 },
+      { lat: 37.7750, lng: -122.4184, timestamp: 1622548860000 },
+      { lat: 37.7751, lng: -122.4174, timestamp: 1622548920000 },
+    ];
+
+    if (window.Worker) {
+      workerRef.current = new Worker(new URL('../../public/worker', import.meta.url));
+      workerRef.current.onmessage = (e) => {
+        if (e.data.type === 'processedGPSData') {
+          setCoordinates(e.data.data);
+          setCurrentTimestamp(e.data.data[0].timestamp);
+        }
+      };
+      workerRef.current.postMessage({ type: 'processGPSData', data });
+    } else {
+      setCoordinates(data);
+      setCurrentTimestamp(data[0].timestamp);
+    }
+
+    return () => {
+      if (workerRef.current) {
+        workerRef.current.terminate();
+      }
+    };
+  }, []);
+
+  const play = () => {
+    if (intervalRef.current) return;
+    intervalRef.current = setInterval(() => {
+      setCurrentIndex(prevIndex => {
+        if (prevIndex < coordinates.length - 1) {
+          setCurrentTimestamp(coordinates[prevIndex + 1].timestamp);
+          return prevIndex + 1;
+        } else {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+          return prevIndex;
+        }
+      });
+    }, 1000 / playbackSpeed);
+  };
+
+  const pause = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+
+  const changeSpeed = (speed) => {
+    setPlaybackSpeed(speed);
+    if (intervalRef.current) {
+      pause();
+      play();
+    }
+  };
+
+  const seek = (index) => {
+    setCurrentIndex(index);
+    setCurrentTimestamp(coordinates[index].timestamp);
+    if (intervalRef.current) {
+      pause();
+      play();
+    }
+  };
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">src/app/page.js</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:h-auto lg:w-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{' '}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
-        </div>
-      </div>
+    <div>
+      <h1>GPS Player</h1>
+      {coordinates.length > 0 && (
+        <>
+          <DynamicMap coordinates={coordinates.slice(0, currentIndex + 1)} />
+          <PlayerControls
+            onPlay={play}
+            onPause={pause}
+            onSpeedChange={changeSpeed}
+            currentTimestamp={currentTimestamp}
+            onSeek={seek}
+            maxIndex={coordinates.length - 1}
+          />
+        </>
+      )}
+    </div>
+  );
+};
 
-      <div className="relative flex place-items-center before:absolute before:h-[300px] before:w-[480px] before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-[240px] after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700 before:dark:opacity-10 after:dark:from-sky-900 after:dark:via-[#0141ff] after:dark:opacity-40 before:lg:h-[360px] z-[-1]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
-
-      <div className="mb-32 grid text-center lg:max-w-5xl lg:w-full lg:mb-0 lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Docs{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
-
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800 hover:dark:bg-opacity-30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Learn{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Templates{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Explore the Next.js 13 playground.
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Deploy{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
-  )
-}
+export default HomePage;
